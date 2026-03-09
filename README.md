@@ -71,8 +71,4 @@ Notes:
 - `POST /api/notes/:noteId/versions`
 - `POST /api/notes/:noteId/restore/:versionId`
 
-## Resume-Friendly Talking Points
 
-- Built collaborative editing with CRDT conflict resolution (Yjs) over WebSockets.
-- Designed note-scoped comments and snapshot version history APIs.
-- Implemented restore workflow that syncs instantly across connected clients.
