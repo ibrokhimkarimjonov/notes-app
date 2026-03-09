@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
+import { WebrtcProvider } from "y-webrtc";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
-const WS_BASE = import.meta.env.VITE_WS_BASE || "ws://localhost:4000";
+function makeId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 export default function App() {
   const [noteId, setNoteId] = useState("demo-note");
@@ -18,30 +22,38 @@ export default function App() {
   const textareaRef = useRef(null);
   const ydocRef = useRef(null);
   const ytextRef = useRef(null);
+  const ycommentsRef = useRef(null);
+  const yversionsRef = useRef(null);
   const applyingRemoteRef = useRef(false);
 
   const roomName = useMemo(() => `note:${activeNoteId}`, [activeNoteId]);
 
-  async function loadComments() {
-    const res = await fetch(`${API_BASE}/api/notes/${activeNoteId}/comments`);
-    const data = await res.json();
-    setComments(data);
-  }
-
-  async function loadVersions() {
-    const res = await fetch(`${API_BASE}/api/notes/${activeNoteId}/versions`);
-    const data = await res.json();
-    setVersions(data);
-  }
-
   useEffect(() => {
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
-    const ytext = ydoc.getText("content");
-    ytextRef.current = ytext;
 
-    const provider = new WebsocketProvider(WS_BASE, roomName, ydoc);
-    provider.on("status", (event) => setStatus(event.status));
+    const ytext = ydoc.getText("content");
+    const ycomments = ydoc.getArray("comments");
+    const yversions = ydoc.getArray("versions");
+    ytextRef.current = ytext;
+    ycommentsRef.current = ycomments;
+    yversionsRef.current = yversions;
+
+    const provider = new WebrtcProvider(roomName, ydoc);
+    provider.on("status", ({ status: nextStatus, connected }) => {
+      if (typeof nextStatus === "string") {
+        setStatus(nextStatus);
+        return;
+      }
+      setStatus(connected ? "connected" : "disconnected");
+    });
+
+    const syncComments = () => setComments(ycomments.toArray());
+    const syncVersions = () => setVersions(yversions.toArray());
+    ycomments.observe(syncComments);
+    yversions.observe(syncVersions);
+    syncComments();
+    syncVersions();
 
     const textarea = textareaRef.current;
     if (textarea) {
@@ -56,36 +68,36 @@ export default function App() {
       };
 
       const handleRemoteChange = () => {
-        const nextValue = ytext.toString();
-        if (textarea.value !== nextValue) {
-          applyingRemoteRef.current = true;
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          textarea.value = nextValue;
-          try {
-            textarea.setSelectionRange(start, end);
-          } catch (_e) {
-            // Ignore selection restore issues for very short content.
-          }
-          applyingRemoteRef.current = false;
+        const next = ytext.toString();
+        if (textarea.value === next) return;
+        applyingRemoteRef.current = true;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.value = next;
+        try {
+          textarea.setSelectionRange(start, end);
+        } catch (_e) {
+          // Ignore selection restore errors on short text.
         }
+        applyingRemoteRef.current = false;
       };
 
       textarea.addEventListener("input", handleLocalInput);
       ytext.observe(handleRemoteChange);
 
-      loadComments().catch(console.error);
-      loadVersions().catch(console.error);
-
       return () => {
         textarea.removeEventListener("input", handleLocalInput);
         ytext.unobserve(handleRemoteChange);
+        ycomments.unobserve(syncComments);
+        yversions.unobserve(syncVersions);
         provider.destroy();
         ydoc.destroy();
       };
     }
 
     return () => {
+      ycomments.unobserve(syncComments);
+      yversions.unobserve(syncVersions);
       provider.destroy();
       ydoc.destroy();
     };
@@ -104,57 +116,49 @@ export default function App() {
     });
   }
 
-  async function submitComment(e) {
+  function submitComment(e) {
     e.preventDefault();
-    if (!commentText.trim()) return;
+    const text = commentText.trim();
+    if (!text) return;
 
-    await fetch(`${API_BASE}/api/notes/${activeNoteId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const ycomments = ycommentsRef.current;
+    ycomments.push([
+      {
+        id: makeId(),
         author,
-        text: commentText.trim(),
-        anchor: selectedRange
-      })
-    });
+        text,
+        anchor: selectedRange,
+        createdAt: new Date().toISOString()
+      }
+    ]);
+
     setCommentText("");
     setSelectedRange(null);
-    await loadComments();
   }
 
-  async function saveVersion() {
+  function saveVersion() {
+    const yversions = yversionsRef.current;
     const content = textareaRef.current?.value || "";
-    await fetch(`${API_BASE}/api/notes/${activeNoteId}/versions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    yversions.insert(0, [
+      {
+        id: makeId(),
         author,
+        label: `Manual save (${new Date().toLocaleTimeString()})`,
         content,
-        label: `Manual save (${new Date().toLocaleTimeString()})`
-      })
-    });
-    await loadVersions();
+        createdAt: new Date().toISOString(),
+        size: content.length
+      }
+    ]);
   }
 
-  async function restoreVersion(versionId) {
-    const response = await fetch(
-      `${API_BASE}/api/notes/${activeNoteId}/versions/${versionId}`
-    );
-    if (!response.ok) return;
-    const fullVersion = await response.json();
-
+  function restoreVersion(versionId) {
+    const version = versions.find((v) => v.id === versionId);
+    if (!version) return;
     const ytext = ytextRef.current;
     ydocRef.current.transact(() => {
       ytext.delete(0, ytext.length);
-      ytext.insert(0, fullVersion.content || "");
+      ytext.insert(0, version.content || "");
     });
-
-    await fetch(`${API_BASE}/api/notes/${activeNoteId}/restore/${versionId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ author })
-    });
-    await loadVersions();
   }
 
   function joinNote(e) {
@@ -169,7 +173,7 @@ export default function App() {
       <header className="header">
         <h1>Collaborative Notes</h1>
         <p>Room: {activeNoteId}</p>
-        <p className={`status status-${status}`}>WebSocket: {status}</p>
+        <p className={`status status-${status}`}>Connection: {status}</p>
       </header>
 
       <section className="controls">
@@ -197,10 +201,10 @@ export default function App() {
             className="editor"
             onMouseUp={handleSelection}
             onKeyUp={handleSelection}
-            placeholder="Start typing with another tab open..."
+            placeholder="Open the same Note ID in another device/tab to collaborate."
           />
           <p className="hint">
-            Select text to anchor comments. Same Note ID in multiple tabs will sync in real-time.
+            Collaboration uses WebRTC + CRDT, so this works on static hosting like GitHub Pages.
           </p>
         </section>
 
@@ -220,10 +224,8 @@ export default function App() {
                 <li key={c.id}>
                   <strong>{c.author}</strong>: {c.text}
                   <div className="meta">
-                    {c.anchor
-                      ? `Range ${c.anchor.start}-${c.anchor.end}`
-                      : "General comment"}{" "}
-                    | {new Date(c.createdAt).toLocaleString()}
+                    {c.anchor ? `Range ${c.anchor.start}-${c.anchor.end}` : "General comment"} |{" "}
+                    {new Date(c.createdAt).toLocaleString()}
                   </div>
                 </li>
               ))}
