@@ -20,9 +20,9 @@ function makeId() {
 
 export default function App() {
   const [noteId, setNoteId] = useState("demo-note");
-  const [activeNoteId, setActiveNoteId] = useState("demo-note");
+  const [activeNoteId, setActiveNoteId] = useState("");
   const [author, setAuthor] = useState("Student");
-  const [status, setStatus] = useState("connecting");
+  const [status, setStatus] = useState("idle");
   const [persistenceMode, setPersistenceMode] = useState(db ? "firebase" : "memory");
   const [comments, setComments] = useState([]);
   const [versions, setVersions] = useState([]);
@@ -37,6 +37,11 @@ export default function App() {
   const roomName = useMemo(() => `note:${activeNoteId}`, [activeNoteId]);
 
   useEffect(() => {
+    if (!activeNoteId) {
+      setStatus("idle");
+      return undefined;
+    }
+
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
@@ -97,9 +102,15 @@ export default function App() {
   }, [roomName]);
 
   useEffect(() => {
+    if (!activeNoteId) {
+      setComments([]);
+      setVersions([]);
+      return undefined;
+    }
+
     if (!db) {
       setPersistenceMode("memory");
-      return;
+      return undefined;
     }
 
     setPersistenceMode("firebase");
@@ -155,6 +166,7 @@ export default function App() {
 
   async function submitComment(e) {
     e.preventDefault();
+    if (!activeNoteId) return;
     const text = commentText.trim();
     if (!text) return;
 
@@ -183,6 +195,7 @@ export default function App() {
   }
 
   async function saveVersion() {
+    if (!activeNoteId) return;
     const content = textareaRef.current?.value || "";
     const payload = {
       author,
@@ -209,6 +222,7 @@ export default function App() {
   }
 
   function restoreVersion(versionId) {
+    if (!activeNoteId) return;
     const version = versions.find((v) => v.id === versionId);
     if (!version) return;
     const ytext = ytextRef.current;
@@ -220,16 +234,24 @@ export default function App() {
 
   function joinNote(e) {
     e.preventDefault();
+    if (activeNoteId) return;
     const next = noteId.trim();
     if (!next) return;
     setActiveNoteId(next);
+  }
+
+  function exitRoom() {
+    setActiveNoteId("");
+    setStatus("idle");
+    setComments([]);
+    setVersions([]);
   }
 
   return (
     <div className="layout">
       <header className="header">
         <h1>Collaborative Notes</h1>
-        <p>Room: {activeNoteId}</p>
+        <p>Room: {activeNoteId || "Not joined"}</p>
         <p className={`status status-${status}`}>Connection: {status}</p>
         <p>Persistence: {persistenceMode}</p>
       </header>
@@ -244,7 +266,13 @@ export default function App() {
             Your Name
             <input value={author} onChange={(e) => setAuthor(e.target.value)} />
           </label>
-          <button type="submit">Join Room</button>
+          {!activeNoteId ? (
+            <button type="submit">Join Room</button>
+          ) : (
+            <button type="button" onClick={exitRoom}>
+              Exit
+            </button>
+          )}
         </form>
       </section>
 
@@ -252,11 +280,14 @@ export default function App() {
         <section className="editor-card">
           <div className="editor-toolbar">
             <h2>Editor</h2>
-            <button onClick={saveVersion}>Save Version</button>
+            <button onClick={saveVersion} disabled={!activeNoteId}>
+              Save Version
+            </button>
           </div>
           <textarea
             ref={textareaRef}
             className="editor"
+            disabled={!activeNoteId}
             onMouseUp={handleSelection}
             onKeyUp={handleSelection}
             placeholder="Open the same Note ID in another device/tab to collaborate."
@@ -273,9 +304,12 @@ export default function App() {
               <textarea
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
+                disabled={!activeNoteId}
                 placeholder="Add a comment"
               />
-              <button type="submit">Add Comment</button>
+              <button type="submit" disabled={!activeNoteId}>
+                Add Comment
+              </button>
             </form>
             <ul>
               {comments.map((c) => (
