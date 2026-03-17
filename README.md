@@ -7,6 +7,7 @@ Google Docs-style collaborative notes with:
 
 ## Tech Stack
 - Frontend: React + Vite + Yjs + y-webrtc
+- Persistence: Firebase Firestore
 - Hosting: GitHub Pages (free)
 
 ## Project Structure
@@ -28,10 +29,37 @@ Frontend runs on `http://localhost:5173`.
 1. Enter the same `Note ID` in two browser tabs/devices.
 2. Type in one tab and watch real-time sync in the other tab.
 3. Add comments in the comments panel.
-4. Click `Save Version` to create a snapshot.
+4. Click `Save Version` to create a persistent snapshot.
 5. Restore any older snapshot from version history.
 
-## 3) Publish Free (GitHub Pages)
+## 3) Configure Firebase
+
+1. Create a Firebase project and enable Firestore.
+2. Create a web app in Firebase and copy config values.
+3. For local dev, create `client/.env` from [client/.env.example](/Users/ibrokhimkarimjonov/Desktop/study-bot/collab-notes/client/.env.example).
+4. In GitHub repo, go to `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`.
+5. Add these repository variables:
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
+
+Recommended Firestore rules for this project:
+
+```txt
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /notes/{noteId}/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+## 4) Publish Free (GitHub Pages)
 
 1. Push code to `main` branch in your repo.
 2. In GitHub repo: `Settings` -> `Pages` -> `Source: GitHub Actions`.
@@ -44,4 +72,4 @@ Frontend runs on `http://localhost:5173`.
 
 - Built collaborative editing with CRDT conflict resolution (Yjs).
 - Designed note-scoped comments and version history synced through CRDT.
-- Implemented cross-device collaboration on static hosting with WebRTC.
+- Implemented persistent version history/comments with Firebase Firestore.

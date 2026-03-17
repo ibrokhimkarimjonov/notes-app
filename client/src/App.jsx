@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { WebrtcProvider } from "y-webrtc";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp
+} from "firebase/firestore";
+import { db } from "./firebase";
 
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -14,6 +23,7 @@ export default function App() {
   const [activeNoteId, setActiveNoteId] = useState("demo-note");
   const [author, setAuthor] = useState("Student");
   const [status, setStatus] = useState("connecting");
+  const [persistenceMode, setPersistenceMode] = useState(db ? "firebase" : "memory");
   const [comments, setComments] = useState([]);
   const [versions, setVersions] = useState([]);
   const [commentText, setCommentText] = useState("");
@@ -22,8 +32,6 @@ export default function App() {
   const textareaRef = useRef(null);
   const ydocRef = useRef(null);
   const ytextRef = useRef(null);
-  const ycommentsRef = useRef(null);
-  const yversionsRef = useRef(null);
   const applyingRemoteRef = useRef(false);
 
   const roomName = useMemo(() => `note:${activeNoteId}`, [activeNoteId]);
@@ -33,11 +41,7 @@ export default function App() {
     ydocRef.current = ydoc;
 
     const ytext = ydoc.getText("content");
-    const ycomments = ydoc.getArray("comments");
-    const yversions = ydoc.getArray("versions");
     ytextRef.current = ytext;
-    ycommentsRef.current = ycomments;
-    yversionsRef.current = yversions;
 
     const provider = new WebrtcProvider(roomName, ydoc);
     provider.on("status", ({ status: nextStatus, connected }) => {
@@ -47,13 +51,6 @@ export default function App() {
       }
       setStatus(connected ? "connected" : "disconnected");
     });
-
-    const syncComments = () => setComments(ycomments.toArray());
-    const syncVersions = () => setVersions(yversions.toArray());
-    ycomments.observe(syncComments);
-    yversions.observe(syncVersions);
-    syncComments();
-    syncVersions();
 
     const textarea = textareaRef.current;
     if (textarea) {
@@ -88,20 +85,60 @@ export default function App() {
       return () => {
         textarea.removeEventListener("input", handleLocalInput);
         ytext.unobserve(handleRemoteChange);
-        ycomments.unobserve(syncComments);
-        yversions.unobserve(syncVersions);
         provider.destroy();
         ydoc.destroy();
       };
     }
 
     return () => {
-      ycomments.unobserve(syncComments);
-      yversions.unobserve(syncVersions);
       provider.destroy();
       ydoc.destroy();
     };
   }, [roomName]);
+
+  useEffect(() => {
+    if (!db) {
+      setPersistenceMode("memory");
+      return;
+    }
+
+    setPersistenceMode("firebase");
+    const commentsQuery = query(
+      collection(db, "notes", activeNoteId, "comments"),
+      orderBy("createdAt", "desc")
+    );
+    const versionsQuery = query(
+      collection(db, "notes", activeNoteId, "versions"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
+      const next = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        const createdAt = data.createdAt?.toDate
+          ? data.createdAt.toDate().toISOString()
+          : new Date().toISOString();
+        return { id: docSnap.id, ...data, createdAt };
+      });
+      setComments(next);
+    });
+
+    const unsubscribeVersions = onSnapshot(versionsQuery, (snapshot) => {
+      const next = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        const createdAt = data.createdAt?.toDate
+          ? data.createdAt.toDate().toISOString()
+          : new Date().toISOString();
+        return { id: docSnap.id, ...data, createdAt };
+      });
+      setVersions(next);
+    });
+
+    return () => {
+      unsubscribeComments();
+      unsubscribeVersions();
+    };
+  }, [activeNoteId]);
 
   function handleSelection() {
     const textarea = textareaRef.current;
@@ -116,39 +153,59 @@ export default function App() {
     });
   }
 
-  function submitComment(e) {
+  async function submitComment(e) {
     e.preventDefault();
     const text = commentText.trim();
     if (!text) return;
 
-    const ycomments = ycommentsRef.current;
-    ycomments.push([
-      {
-        id: makeId(),
+    if (db) {
+      await addDoc(collection(db, "notes", activeNoteId, "comments"), {
         author,
         text,
         anchor: selectedRange,
-        createdAt: new Date().toISOString()
-      }
-    ]);
+        createdAt: serverTimestamp()
+      });
+    } else {
+      setComments((prev) => [
+        {
+          id: makeId(),
+          author,
+          text,
+          anchor: selectedRange,
+          createdAt: new Date().toISOString()
+        },
+        ...prev
+      ]);
+    }
 
     setCommentText("");
     setSelectedRange(null);
   }
 
-  function saveVersion() {
-    const yversions = yversionsRef.current;
+  async function saveVersion() {
     const content = textareaRef.current?.value || "";
-    yversions.insert(0, [
-      {
-        id: makeId(),
-        author,
-        label: `Manual save (${new Date().toLocaleTimeString()})`,
-        content,
-        createdAt: new Date().toISOString(),
-        size: content.length
-      }
-    ]);
+    const payload = {
+      author,
+      label: `Manual save (${new Date().toLocaleTimeString()})`,
+      content,
+      size: content.length
+    };
+
+    if (db) {
+      await addDoc(collection(db, "notes", activeNoteId, "versions"), {
+        ...payload,
+        createdAt: serverTimestamp()
+      });
+    } else {
+      setVersions((prev) => [
+        {
+          id: makeId(),
+          ...payload,
+          createdAt: new Date().toISOString()
+        },
+        ...prev
+      ]);
+    }
   }
 
   function restoreVersion(versionId) {
@@ -174,6 +231,7 @@ export default function App() {
         <h1>Collaborative Notes</h1>
         <p>Room: {activeNoteId}</p>
         <p className={`status status-${status}`}>Connection: {status}</p>
+        <p>Persistence: {persistenceMode}</p>
       </header>
 
       <section className="controls">
