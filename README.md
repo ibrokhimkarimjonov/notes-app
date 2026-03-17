@@ -1,9 +1,10 @@
-# Real-Time Collaborative Notes App
+# Team Meeting Notes + Action Tracker
 
-Google Docs-style collaborative notes with:
-- Real-time editing via WebRTC + Yjs CRDT
-- Inline comments (shared via CRDT)
-- Version history snapshots + restore
+Real-time meeting workspace with:
+- Live collaborative meeting notes (WebRTC + Yjs CRDT)
+- Action items with assignee, due date, and status
+- "My Open Tasks" view per participant
+- Inline comments + version snapshots with restore
 
 ## Tech Stack
 - Frontend: React + Vite + Yjs + y-webrtc
@@ -26,11 +27,12 @@ Frontend runs on `http://localhost:5173`.
 
 ## 2) Use the App
 
-1. Enter the same `Note ID` in two browser tabs/devices.
-2. Type in one tab and watch real-time sync in the other tab.
-3. Add comments in the comments panel.
-4. Click `Save Version` to create a persistent snapshot.
-5. Restore any older snapshot from version history.
+1. Enter the same `Meeting ID` on two devices/tabs and join.
+2. Pick a template (`Standup`, `Planning`, or `Retro`).
+3. Capture decisions and discussion in live notes.
+4. Add action items with assignee + due date.
+5. Use `My Open Tasks` to track your pending items.
+6. Save/restore snapshots from version history.
 
 ## 3) Configure Firebase
 
@@ -71,6 +73,6 @@ service cloud.firestore {
 
 ## Resume-Friendly Talking Points
 
-- Built collaborative editing with CRDT conflict resolution (Yjs).
-- Designed note-scoped comments and version history synced through CRDT.
-- Implemented persistent version history/comments with Firebase Firestore.
+- Built a real-time collaborative meeting workspace using CRDTs (Yjs) over WebRTC.
+- Implemented persistent action-item tracking (assignee, due date, status) with Firebase Firestore.
+- Added template-driven meeting workflows and snapshot-based version recovery.
