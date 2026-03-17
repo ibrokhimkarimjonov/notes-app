@@ -175,6 +175,12 @@ select {
   gap: 8px;
 }
 
+.task-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
 .task-done {
   opacity: 0.72;
 }
@@ -185,6 +191,10 @@ select {
 
 @media (max-width: 900px) {
   .content {
+    grid-template-columns: 1fr;
+  }
+
+  .task-actions {
     grid-template-columns: 1fr;
   }
 }

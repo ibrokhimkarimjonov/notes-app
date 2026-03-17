@@ -2,8 +2,10 @@
 
 Real-time meeting workspace with:
 - Live collaborative meeting notes (WebRTC + Yjs CRDT)
-- Action items with assignee, due date, and status
+- Action items with assignee, due date, status, and priority
 - "My Open Tasks" view per participant
+- Decision log with owner + rationale
+- Mentions/overdue alerts and markdown summary export
 - Inline comments + version snapshots with restore
 
 ## Tech Stack
@@ -32,7 +34,9 @@ Frontend runs on `http://localhost:5173`.
 3. Capture decisions and discussion in live notes.
 4. Add action items with assignee + due date.
 5. Use `My Open Tasks` to track your pending items.
-6. Save/restore snapshots from version history.
+6. Add decisions (owner + context) to keep rationale visible.
+7. Check `Alerts` for mentions and overdue tasks.
+8. Save/restore snapshots from version history and export summary markdown.
 
 ## 3) Configure Firebase
 
@@ -74,5 +78,5 @@ service cloud.firestore {
 ## Resume-Friendly Talking Points
 
 - Built a real-time collaborative meeting workspace using CRDTs (Yjs) over WebRTC.
-- Implemented persistent action-item tracking (assignee, due date, status) with Firebase Firestore.
-- Added template-driven meeting workflows and snapshot-based version recovery.
+- Implemented persistent action-item tracking (assignee, due date, status, priority) with Firebase Firestore.
+- Added decision logs, mention/overdue alerts, and exportable meeting summaries.
