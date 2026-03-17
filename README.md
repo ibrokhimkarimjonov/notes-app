@@ -45,6 +45,7 @@ Frontend runs on `http://localhost:5173`.
    - `VITE_FIREBASE_STORAGE_BUCKET`
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
+   - Optional for your current repo: app already includes your provided Firebase config as defaults.
 
 Recommended Firestore rules for this project:
 
